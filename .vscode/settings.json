@@ -1,5 +1,15 @@
 {
     "files.associations": {
-        "span": "cpp"
+        "span": "cpp",
+        "stdio.h": "c",
+        "pin_cfg.h": "c",
+        "my_pin_config.h": "c",
+        "fpioa.h": "c",
+        "gpio.h": "c",
+        "unistd.h": "c",
+        "gpiohs.h": "c",
+        "platform.h": "c",
+        "devices.h": "c",
+        "freertos.h": "c"
     }
 }

@@ -13,9 +13,7 @@ elseif(NOT "${TOOLCHAIN}" MATCHES "/$")
     global_set(TOOLCHAIN "${TOOLCHAIN}")
 endif()
 
-if (NOT TOOLCHAIN)
-    global_set(TOOLCHAIN "C:\Users\yjy19\Desktop\K210\kendryte-toolchain\bin")
-endif()
+global_set(TOOLCHAIN "/opt/kendryte-toolchain/bin")
 
 if (NOT TOOLCHAIN)
     message(FATAL_ERROR "TOOLCHAIN must be set, to absolute path of kendryte-toolchain dist/bin folder.")

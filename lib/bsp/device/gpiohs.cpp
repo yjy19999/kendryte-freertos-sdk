@@ -67,7 +67,7 @@ public:
     virtual void set_drive_mode(uint32_t pin, gpio_drive_mode_t mode) override
     {
         int io_number = fpioa_get_io_by_function(static_cast<fpioa_function_t>(FUNC_GPIOHS0 + pin));
-        configASSERT(io_number > 0);
+        configASSERT(io_number >= 0);
 
         fpioa_pull_t pull = FPIOA_PULL_NONE;
         uint32_t dir = 0;
