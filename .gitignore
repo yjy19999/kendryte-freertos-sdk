@@ -1,5 +1,5 @@
 autom4te.cache
-build
+/build/*
 build_i
 config.log
 config.status
@@ -16,3 +16,4 @@ CMakeSettings.json
 *.tar.*
 cmake-build-*
 /third_party/userland
+!hello_world.bin
