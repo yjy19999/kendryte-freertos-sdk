@@ -115,6 +115,7 @@ void vTask1()
 
 void vTask2()
 {
+    show_proc_id();
     while (1)
     {
         static int val = 0;
@@ -125,6 +126,7 @@ void vTask2()
 
 void vTask3()
 {
+    show_proc_id();
     while (1)
     {
         rgb_blink_pool();
@@ -150,16 +152,16 @@ void vTask4()
         queue_usb.push(recv);
         // io_write(uart1, recv, 10);
         int usb_recv_len = queue_usb.size();
-        uint8_t front_data = 0;
-        if (usb_recv_len > 10)
-        {
-            for (int i = 0; i < 10; i++)
-            {
-                front_data = queue_usb.front();
-                io_write(uart1, &front_data, 1);
-                queue_usb.pop();
-            }
-        }
+        // uint8_t front_data = 0;
+        // if (usb_recv_len > 10)
+        // {
+        //     for (int i = 0; i < 10; i++)
+        //     {
+        //         front_data = queue_usb.front();
+        //         io_write(uart1, &front_data, 1);
+        //         queue_usb.pop();
+        //     }
+        // }
         // io_write(uart1, (uint8_t *)hel, strlen(hel));
 
         vTaskDelay(100 / portTICK_RATE_MS);
