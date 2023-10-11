@@ -78,6 +78,10 @@
         "cinttypes": "cpp",
         "typeindex": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "st7789.h": "c",
+        "main.h": "c",
+        "stdlib.h": "c",
+        "lcd.h": "c"
     }
 }
