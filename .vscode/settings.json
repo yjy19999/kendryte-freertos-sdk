@@ -82,6 +82,11 @@
         "st7789.h": "c",
         "main.h": "c",
         "stdlib.h": "c",
-        "lcd.h": "c"
+        "lcd.h": "c",
+        "dvp_cam.h": "c",
+        "ov2640.h": "c",
+        "plic.h": "c",
+        "dvp.h": "c",
+        "sleep.h": "c"
     }
 }

@@ -35,6 +35,20 @@
 #define PIN_LCD_RST           (37)
 #define PIN_LCD_RS            (38)
 #define PIN_LCD_WR            (39)
+// SD
+#define PIN_TF_MISO            (26)
+#define PIN_TF_CLK             (27)
+#define PIN_TF_MOSI            (28)
+#define PIN_TF_CS              (29)
+// Camera
+#define PIN_DVP_PCLK           (47)
+#define PIN_DVP_XCLK           (46)
+#define PIN_DVP_HSYNC          (45)
+#define PIN_DVP_PWDN           (44)
+#define PIN_DVP_VSYNC          (43)
+#define PIN_DVP_RST            (42)
+#define PIN_DVP_SCL            (41)
+#define PIN_DVP_SDA            (40)
 
 /*****************************FUNC-GPIO************************************/
 // GPIO口的功能，绑定到软件IO口
@@ -50,13 +64,17 @@
 #define FUNC_LCD_RST          (FUNC_GPIOHS0 + LCD_RST_GPIONUM)
 #define FUNC_LCD_RS           (FUNC_GPIOHS0 + LCD_RS_GPIONUM)
 #define FUNC_LCD_WR           (FUNC_SPI0_SCLK)
+#define FUNC_TF_SPI_MISO      (FUNC_SPI1_D1)
+#define FUNC_TF_SPI_CLK       (FUNC_SPI1_SCLK)
+#define FUNC_TF_SPI_MOSI      (FUNC_SPI1_D0)
+#define FUNC_TF_SPI_CS        (FUNC_GPIOHS0 + TF_CS_GPIONUM)
 // FUNC_UART1_TX
 /*****************************struct for gpio*********************************/
 // gpio struct
 const fpioa_cfg_t g_fpioa_cfg =
 {
     .version = PIN_CFG_VERSION,
-    .functions_count = 12,
+    .functions_count = 24,
     .functions =
     {
         {PIN_LED_0, fpioa_function_t(FUNC_LED0)},
@@ -70,7 +88,19 @@ const fpioa_cfg_t g_fpioa_cfg =
         {PIN_LCD_CS, fpioa_function_t(FUNC_LCD_CS)},
         {PIN_LCD_RST, fpioa_function_t(FUNC_LCD_RST)},
         {PIN_LCD_RS, fpioa_function_t(FUNC_LCD_RS)},
-        {PIN_LCD_WR, fpioa_function_t(FUNC_LCD_WR)}
+        {PIN_LCD_WR, fpioa_function_t(FUNC_LCD_WR)},
+        {PIN_TF_MISO, fpioa_function_t(FUNC_TF_SPI_MISO)},
+        {PIN_TF_CLK, fpioa_function_t(FUNC_TF_SPI_CLK)},
+        {PIN_TF_MOSI, fpioa_function_t(FUNC_TF_SPI_MOSI)},
+        {PIN_TF_CS, fpioa_function_t(FUNC_TF_SPI_CS)},
+        {PIN_DVP_RST, fpioa_function_t(FUNC_CMOS_RST)},
+        {PIN_DVP_PWDN, fpioa_function_t(FUNC_CMOS_PWDN)},
+        {PIN_DVP_SCL, fpioa_function_t(FUNC_SCCB_SCLK)},
+        {PIN_DVP_SDA, fpioa_function_t(FUNC_SCCB_SDA)},
+        {PIN_DVP_XCLK, fpioa_function_t(FUNC_CMOS_XCLK)},
+        {PIN_DVP_VSYNC, fpioa_function_t(FUNC_CMOS_VSYNC)},
+        {PIN_DVP_HSYNC, fpioa_function_t(FUNC_CMOS_HREF)},
+        {PIN_DVP_PCLK, fpioa_function_t(FUNC_CMOS_PCLK)}
     }
 };
 

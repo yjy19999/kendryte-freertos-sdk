@@ -19,7 +19,7 @@ project(${PROJ})
 
 include_directories(inc/${PROJ})
 include_directories(src/${PROJ})
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_LIST_DIR}/lib/arch/include ${CMAKE_CURRENT_LIST_DIR}/lib/utils/include ${CMAKE_CURRENT_LIST_DIR}/lib/hal/include ${CMAKE_CURRENT_LIST_DIR}/lib/freertos/include)
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_LIST_DIR}/lib/arch/include ${CMAKE_CURRENT_LIST_DIR}/lib/utils/include ${CMAKE_CURRENT_LIST_DIR}/lib/hal/include ${CMAKE_CURRENT_LIST_DIR}/lib/freertos/include ${CMAKE_CURRENT_LIST_DIR}/lib/bsp/include)
 
 # config self use headers
 header_directories(${SDK_ROOT}/lib)

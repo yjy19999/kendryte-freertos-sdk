@@ -21,6 +21,11 @@
 #include <diskio.h>
 #include <ff.h>
 
+extern "C"
+{
+    #include "lcd.h"
+}
+
 using namespace sys;
 
 #define MAX_FILE_SYSTEMS 16
@@ -51,13 +56,16 @@ static void check_fatfs_error(FRESULT result)
     };
 
     if (result != FR_OK)
+        // SHOW_DEBUG(16,180,err_str[result]);
         throw std::runtime_error(err_str[result]);
 }
 
+// Check for invalid path
 static const char *normalize_path(const char *name)
 {
     auto str = std::strstr(name, "/fs/");
     if (!str)
+        // SHOW_DEBUG(16,180,"Invalid path.");
         throw std::runtime_error("Invalid path.");
     return str + 4;
 }
@@ -89,7 +97,7 @@ public:
                 return obj;
             }
         }
-
+        // SHOW_DEBUG(16,180,"run_here_Max custom drivers exceeded.");
         throw std::runtime_error("Max custom drivers exceeded.");
     }
 
@@ -212,10 +220,12 @@ int filesystem_mount(const char *name, handle_t storage_handle)
     {
         auto fs = k_filesystem::install_filesystem(system_handle_to_object(storage_handle).move_as<block_storage_driver>());
         check_fatfs_error(f_mount(&fs->FatFS, normalize_path(name), 1));
+        // SHOW_DEBUG(16,200,"run_here_fuck");
         return 0;
     }
     catch (...)
     {
+        // SHOW_DEBUG(16,200,"run_here_fuck");
         return -1;
     }
 }

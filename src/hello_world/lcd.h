@@ -41,6 +41,8 @@
 #define PINK        0xF81F
 #define USER_COLOR  0xAA55
 
+#define SHOW_DEBUG(x,y,str) (lcd_draw_string((x), (y), const_cast<char *>(str), (uint16_t)RED))
+
 extern const unsigned char gImage_logo[153608];
 
 /* LCD显示方向 */
