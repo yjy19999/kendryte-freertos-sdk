@@ -20,12 +20,12 @@
 #include "dvp_cam.h"
 #include <sleep.h>
 
-#define REGLENGTH 16
+#define REGLENGTH 8
 
 #define OV2640_CHIPID_HIGH  0x0A
 #define OV2640_CHIPID_LOW   0x0B
 
-#define OV2640_ID 0x7FA2
+#define OV2640_ID 0x2642
 
 const uint16_t jpeg_size_tbl[][2] = {
     { 160, 120 }, //QQVGA
@@ -257,10 +257,11 @@ int ov2640_init(void)
     char id_str[20];
     sprintf(id_str,"ID: 0x%04X \r\n", reg);
     io_write(uart1,(uint8_t*)id_str,20);
+    usleep(100 * 1000);
     if (reg !=OV2640_ID)
     {
         char* fault_str="ov2640 get id error.";
-        io_write(uart1,(uint8_t*)id_str,20);
+        io_write(uart1,(uint8_t*)fault_str,20);
     }
     usleep(100 * 1000);
     //dvp_cam_init();
@@ -288,3 +289,12 @@ int ov2640_read_id(uint16_t *manuf_id, uint16_t *device_id)
     return 0;
 }
 
+void OV2640_JPEG_Mode(void)
+{
+    uint16_t i = 0;
+
+    for (i = 0; i < (sizeof(jpeg_size_tbl) / 4); i++)
+    {
+        OV2640_WR_Reg(jpeg_size_tbl[i][0], jpeg_size_tbl[i][1]);
+    }
+}

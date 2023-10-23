@@ -20,7 +20,8 @@
 #include <cstring>
 #include <diskio.h>
 #include <ff.h>
-
+#include "main.h"
+#include <string>
 extern "C"
 {
     #include "lcd.h"
@@ -135,7 +136,18 @@ public:
         else if (file_mode & FILE_MODE_APPEND)
             mode |= FA_OPEN_APPEND;
 
-        check_fatfs_error(f_open(&file_, normalize_path(fileName), mode));
+        FRESULT res=f_open(&file_, normalize_path(fileName), mode);
+        // char run_str[]="run_here\n";
+        // io_write(uart1,(uint8_t*)run_str,std::strlen(run_str));
+        if(res!=FR_OK)
+        {
+            char buf[3];
+            sprintf(buf,"%d\n",int(res));
+            io_write(uart1,(uint8_t*)buf,std::strlen(buf));
+        }
+
+        check_fatfs_error(res);
+
 
         if (file_mode & FILE_MODE_TRUNCATE)
         {
@@ -216,16 +228,49 @@ private:
 
 int filesystem_mount(const char *name, handle_t storage_handle)
 {
+    // try
+    // {
+    //     auto fs = k_filesystem::install_filesystem(system_handle_to_object(storage_handle).move_as<block_storage_driver>());
+    //     check_fatfs_error(f_mount(&fs->FatFS, normalize_path(name), 1));
+    //     res=f_mount(&fs->FatFS,normalize_path(name),1);
+    //     // SHOW_DEBUG(16,200,"run_here_fuck");
+    //     return 0;
+    // }
+    // catch (...)
+    // {
+    //     // SHOW_DEBUG(16,200,"run_here_fuck");
+    //     return -1;
+    // }
     try
     {
+        const char *sig = {"run fs here!\n"};
+        
         auto fs = k_filesystem::install_filesystem(system_handle_to_object(storage_handle).move_as<block_storage_driver>());
-        check_fatfs_error(f_mount(&fs->FatFS, normalize_path(name), 1));
-        // SHOW_DEBUG(16,200,"run_here_fuck");
+        io_write(uart1, (uint8_t *)sig, strlen(sig));
+        int try_time=5;
+        FRESULT res=FR_OK;
+        res=f_mount(&fs->FatFS, normalize_path(name), 1);
+        if(FR_OK!=res)
+        {
+            char fail_code_buf[30];
+            sprintf(fail_code_buf,"get error code %d\n",res);
+            io_write(uart1,(uint8_t*)fail_code_buf,strlen(fail_code_buf));
+        }
+        while(FR_OK!=res && try_time>0)
+        {
+            res=f_mount(&fs->FatFS, normalize_path(name), 1);
+            usleep(300*1000);
+            try_time--;
+        }
+        if(try_time<0)
+        {
+            const char *fail_str = {"mounted for 5 times, all failed!\n"};
+            io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
+        }
         return 0;
     }
-    catch (...)
+    catch(...)
     {
-        // SHOW_DEBUG(16,200,"run_here_fuck");
         return -1;
     }
 }
@@ -243,6 +288,7 @@ handle_t filesystem_file_open(const char *filename, file_access_t file_access, f
     try
     {
         auto file = make_object<k_filesystem_file>(filename, file_access, file_mode);
+
         return system_alloc_handle(make_accessor<object_access>(file));
     }
     catch (...)

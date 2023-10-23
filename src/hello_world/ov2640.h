@@ -21,5 +21,5 @@
 
 int ov2640_init(void);
 int ov2640_read_id(uint16_t *manuf_id, uint16_t *device_id);
-
+void OV2640_JPEG_Mode(void);
 #endif /* _OV2640_H */

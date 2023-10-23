@@ -28,6 +28,7 @@
 #include <assert.h>
 #include <iomem.h>
 #include <printf.h>
+#include "main.h"
 
 using namespace sys;
 
@@ -42,6 +43,7 @@ using namespace sys;
 #define COMMON_ENTRY \
     semaphore_lock locker(free_mutex_);
 
+// kpu model class
 class k_model_context : public heap_object, public free_object_access
 {
 public:
@@ -53,6 +55,7 @@ public:
 
         uintptr_t base_addr = (uintptr_t)buffer;
         const kpu_model_header_t *header = (const kpu_model_header_t *)buffer;
+        // only support version 3
         if (header->version == 3 && header->arch == 0)
         {
             model_buffer_ = buffer;
@@ -77,6 +80,8 @@ public:
         }
         else
         {
+            char err_str[]="kmodel load failed\n";
+            io_write(uart1,(uint8_t*)err_str,strlen(err_str));
             throw std::runtime_error("Cannot load kmodel.");
         }
     }

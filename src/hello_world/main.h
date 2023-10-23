@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <devices.h>
+#include <string.h>
 #define PROCESSOR0_ID 0
 #define PROCESSOR1_ID 1
 
@@ -12,9 +13,11 @@ extern handle_t timer0;
 extern handle_t timer1;
 extern handle_t pwm_rgb;
 extern handle_t spi_lcd;
+extern handle_t spi_sd;
+extern handle_t dma0;
 extern handle_t sd0;
 extern handle_t file_dvp;
-
+extern handle_t spi_flash;
 /*****************************SOFTWARE-GPIO********************************/
 // 软件GPIO口，与程序对应
 #define LED0_GPIONUM          (0)

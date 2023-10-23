@@ -21,10 +21,12 @@ enum _enable
 
 uint32_t *display_buf = NULL;
 uint32_t display_buf_addr = 0;
-volatile bool g_dvp_finish_flag;
-volatile uint8_t gram_mux;
-uint32_t *lcd_gram0;
-uint32_t *lcd_gram1;
+// volatile bool g_dvp_finish_flag;
+camera_context_t camera_ctx;
+image_t kpu_image, display_image0, display_image1;
+// volatile uint8_t gram_mux;
+// uint32_t *lcd_gram0;
+// uint32_t *lcd_gram1;
 
 #define OVXXXX_ADDR    0x60 
 #define OV9655_PID_1   0x9657   
@@ -34,14 +36,15 @@ uint32_t *lcd_gram1;
 // For freertos
 void on_irq_dvp(dvp_frame_event_t event, void* userdata)
 {
+    camera_context_t *ctx = (camera_context_t *)userdata;
     switch (event)
     {
         case VIDEO_FE_BEGIN:
             dvp_enable_frame(file_dvp);
             break;
         case VIDEO_FE_END:
-            dvp_set_output_attributes(file_dvp, DATA_FOR_DISPLAY, VIDEO_FMT_RGB565, gram_mux ? lcd_gram0 : lcd_gram1);
-            g_dvp_finish_flag = true;
+            dvp_set_output_attributes(file_dvp, DATA_FOR_DISPLAY, VIDEO_FMT_RGB565, ctx->gram_mux ? ctx->lcd_image0->addr : ctx->lcd_image1->addr);
+            ctx->dvp_finish_flag = true;
             break;
         default:
             configASSERT(!"Invalid event.");
@@ -60,26 +63,46 @@ void sensor_restart()
     usleep(200 * 1000);
 }
 
-void dvp_init()
+void dvp_init(camera_context_t *ctx)
 {
-    lcd_gram0 = (uint32_t *)iomem_malloc(320*240*2);
-    lcd_gram1 = (uint32_t *)iomem_malloc(320*240*2);
+    // lcd_gram0 = (uint32_t *)iomem_malloc(320*240*2);
+    // lcd_gram1 = (uint32_t *)iomem_malloc(320*240*2);
+    kpu_image.pixel = KPU_CHANNEL;
+    kpu_image.width = CAM_WIDTH_PIXEL;
+    kpu_image.height = CAM_HIGHT_PIXEL;
+    display_image0.pixel = DISP_CHANNEL;
+    display_image0.width = CAM_WIDTH_PIXEL;
+    display_image0.height = CAM_HIGHT_PIXEL;
+    display_image1.pixel = DISP_CHANNEL;
+    display_image1.width = CAM_WIDTH_PIXEL;
+    display_image1.height = CAM_HIGHT_PIXEL;
+
+    image_init(&kpu_image);
+    image_init(&display_image0);
+    image_init(&display_image1);
+
+    ctx->dvp_finish_flag = false;
+    ctx->ai_image = &kpu_image;
+    ctx->lcd_image0 = &display_image0;
+    ctx->lcd_image1 = &display_image1;
+    ctx->gram_mux = 0;
 
     sensor_restart();
     dvp_xclk_set_clock_rate(file_dvp, 24000000); /* 24MHz XCLK*/
     dvp_config(file_dvp, CAM_WIDTH_PIXEL, CAM_HIGHT_PIXEL, DISABLE);
 
-    dvp_set_output_enable(file_dvp, DATA_FOR_AI, DISABLE);
+    dvp_set_output_enable(file_dvp, DATA_FOR_AI, ENABLE);
     dvp_set_output_enable(file_dvp, DATA_FOR_DISPLAY, ENABLE);
 
-    dvp_set_output_attributes(file_dvp, DATA_FOR_DISPLAY, VIDEO_FMT_RGB565, (void*)lcd_gram0);
+    dvp_set_output_attributes(file_dvp, DATA_FOR_DISPLAY, VIDEO_FMT_RGB565, (void*)ctx->lcd_image0->addr);
+    dvp_set_output_attributes(file_dvp, DATA_FOR_AI, VIDEO_FMT_RGB24_PLANAR, (void*)ctx->ai_image->addr);  
     // dvp_set_output_attributes(file_dvp, DATA_FOR_DISPLAY, VIDEO_FMT_RGB565, (void*)lcd_gram1);
     // dvp_set_output_attributes(file_dvp, DATA_FOR_AI, VIDEO_FMT_RGB24_PLANAR, (void*)0x40600000);
 
     dvp_set_frame_event_enable(file_dvp, VIDEO_FE_END, DISABLE);
     dvp_set_frame_event_enable(file_dvp, VIDEO_FE_BEGIN, DISABLE);
 
-    dvp_set_on_frame_event(file_dvp, on_irq_dvp, NULL);
+    dvp_set_on_frame_event(file_dvp, on_irq_dvp, ctx);
 
     dvp_set_frame_event_enable(file_dvp, VIDEO_FE_END, ENABLE);
     dvp_set_frame_event_enable(file_dvp, VIDEO_FE_BEGIN, ENABLE);

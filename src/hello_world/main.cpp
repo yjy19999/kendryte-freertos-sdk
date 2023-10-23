@@ -32,20 +32,44 @@
 #include <sleep.h>
 #include "my_pin_config.h"
 #include "main.h"
+
 extern "C"
 {
-#include "sysctl.h"
-#include "lcd.h"
-#include "hal.h"
-#include "ov2640.h"
-// #include "ov9655.h"
-#include "dvp.h"
-#include "dvp_cam.h"
+    #include "sysctl.h"
+    #include "lcd.h"
+    #include "hal.h"
+    #include "ov2640.h"
+    // #include "ov9655.h"
+    #include "dvp.h"
+    #include "dvp_cam.h"
+    #include "image_process.h"
+    #include "w25qxx.h"
+    #include "incbin.h"
+    #include "fft_soft.h"
+    #include "region_layer.h"
 }
+
+#define FFT_N               512U
+/**
+ * FFT 16-bit registers lead to data overflow (-32768-32767),
+ * FFT has nine layers, shift determines which layer needs shift operation to prevent overflow.
+ * (for example, 0x1ff means 9 layers do shift operation; 0x03 means the first layer and the second layer do shift operation) 
+ * If shifted, the result is different from the normal FFT.
+ */
+#define FFT_FORWARD_SHIFT   0x0U
+#define FFT_BACKWARD_SHIFT  0x1ffU
+#define PI                  3.14159265358979323846
+
+typedef struct _complex_hard
+{
+    int16_t real;
+    int16_t imag;
+} complex_hard_t;
 
 // handle for devices
 handle_t gio;
 handle_t uart1;
+handle_t timer0;
 handle_t timer1;
 handle_t pwm_rgb;
 handle_t spi_lcd;
@@ -53,13 +77,34 @@ handle_t spi_sd;
 handle_t dma0;
 handle_t sd0;
 handle_t file_dvp;
+handle_t spi_flash;
+handle_t model_handle;
 
 std::deque<uint8_t> queue_usb;
+extern camera_context_t camera_ctx;
 int frame_count = 0;
 const int frame_length = 10;
 uint8_t data_buf[frame_length];
 std::complex<float> recv_data[4][frame_length / 4];
-extern volatile bool g_dvp_finish_flag;
+
+fft_data_t *input_data;
+fft_data_t *output_data;
+
+static region_layer_t face_detect_rl;
+static obj_info_t face_detect_info;
+#define ANCHOR_NUM 5
+static float anchor[ANCHOR_NUM * 2] = {1.889,2.5245,  2.9465,3.94056, 3.99987,5.3658, 5.155437,6.92275, 6.718375,9.01025};
+
+#define LOAD_KMODEL_FROM_FLASH 1
+
+#if LOAD_KMODEL_FROM_FLASH
+// handle_t spi3;
+#define KMODEL_SIZE (380 * 1024)
+uint8_t *model_data;
+#else
+INCBIN(model, "../src/hello_world/model.kmodel");
+#endif
+
 void key_isr();
 void on_tick_timer1();
 
@@ -142,13 +187,15 @@ void dma_transfer_data(int *src, int *dest, size_t data_len)
 void init_sdcard(void)
 {
     // SHOW_DEBUG(16,60,"run_here_0");
-    handle_t sd0 = spi_sdcard_driver_install(spi_sd, gio, TF_CS_GPIONUM);
-    io_close(spi_sd);
+    sd0 = spi_sdcard_driver_install(spi_sd, gio, TF_CS_GPIONUM);
+    // io_close(spi_sd);
     // SHOW_DEBUG(16,80,"run_here_1");
     configASSERT(sd0);
     // SHOW_DEBUG(16,100,"run_here_2");
     usleep(200*1000);
-    configASSERT(filesystem_mount("fs/0/", sd0) == 0);
+    configASSERT(filesystem_mount("/fs/0:", sd0) == 0);
+    char fs_mount_ok[]="fs mount ok\n";
+    io_write(uart1,(uint8_t *)fs_mount_ok,strlen(fs_mount_ok));
     // int res=filesystem_mount("fs/0/", sd0);
     // SHOW_DEBUG(16,120,std::string(res));
     // SHOW_DEBUG(16,140,"run_here_3"); 
@@ -157,7 +204,7 @@ void init_sdcard(void)
 
 void init_camera(void)
 {
-    dvp_init();
+    dvp_init(&camera_ctx);
     ov2640_init();
 }
 
@@ -165,19 +212,89 @@ void find_sdcard()
 {
     // print all file name
     find_find_data_t find_data;
-    handle_t find = filesystem_find_first("/fs/0/", "*", &find_data);
-    configASSERT(find);
-    uint16_t show_y = 40;
+    handle_t find = filesystem_find_first("/fs//0:/model", "*", &find_data);
+    // configASSERT(find);
+    // uint16_t show_y = 40;
     do
     {
         // printf("%s\n", find_data.filename);
-        lcd_draw_string(16, show_y, const_cast<char *>(find_data.filename), (uint16_t)RED);
-        show_y += 10;
+        // lcd_draw_string(16, show_y, const_cast<char *>(find_data.filename), (uint16_t)RED);
+        
+        // show_y += 10;
+        io_write(uart1,(uint8_t *)(find_data.filename),strlen(find_data.filename));
+        usleep(100*1000);
     } while (filesystem_find_next(find, &find_data));
     filesystem_file_close(find);
 
+    char done_str[]="Done";
+    io_write(uart1,(uint8_t *)done_str,strlen(done_str));
     // printf("Done\n");
 }
+
+void test_write_sdcard(void)
+{
+    handle_t file;
+    do
+    {
+        file=filesystem_file_open("/fs/model.txt",FILE_ACCESS_READ_WRITE,FILE_MODE_OPEN_ALWAYS);
+        // char try_str[]="try open file\n";
+        // io_write(uart1,(uint8_t*)try_str,strlen(try_str));
+        usleep(100*1000);
+    } while (file==NULL_HANDLE);
+
+    if(file==NULL_HANDLE)
+    {
+        char fail_str[]="open file failed\n";
+        io_write(uart1,(uint8_t*)fail_str,strlen(fail_str));
+    }
+
+    char msg[]="k233333333333333333";
+    char buffer[1000];
+    filesystem_file_write(file, (const uint8_t *)msg, strlen(msg)+1);
+    usleep(100*1000);
+    filesystem_file_flush(file);
+    filesystem_file_set_position(file, 0);
+    filesystem_file_read(file, (uint8_t *)buffer, strlen(msg)+1);
+    io_write(uart1,(uint8_t*)buffer,strlen(buffer));
+    usleep(100*1000);
+    filesystem_file_close(file);
+}
+
+handle_t kmodel_get(const char* model_path)
+{
+
+    handle_t model_file;
+    handle_t model_context; 
+    
+    int try_time=5;
+    do
+    {
+        model_file=filesystem_file_open(model_path,FILE_ACCESS_READ,FILE_MODE_OPEN_EXISTING);
+        usleep(100*1000);
+    } while (try_time--);
+    
+    if(model_file==NULL_HANDLE)
+    {
+        char fail_str[]="open file failed\n";
+        io_write(uart1,(uint8_t*)fail_str,strlen(fail_str));
+    }    
+    filesystem_file_flush(model_file);
+    filesystem_file_set_position(model_file, 0);
+    size_t model_size=filesystem_file_get_size(model_file);
+
+    model_data = (uint8_t *)malloc(model_size + 255);
+    uint8_t *model_data_align = (uint8_t *)(((uintptr_t)model_data+255)&(~255));
+
+    filesystem_file_read(model_file, model_data_align, model_size);
+    usleep(100*1000);
+    model_context = kpu_model_load_from_buffer(model_data_align);
+    return model_context;
+}
+
+// void kpu_run_input(void)
+// {
+//     kpu_run(model_context)
+// }
 
 void rgb_gpio_pool(void)
 {
@@ -229,6 +346,8 @@ void rgb_pwm_pool(void)
         pwm_set_active_duty_cycle_percentage(pwm_rgb, i, percent[i]);
     }
 }
+
+
 
 void show_proc_id(void)
 {
@@ -358,20 +477,44 @@ void vTask4()
     }
 }
 
-void vTask5()
+void vTaskDetect()
 {
-    while (1)
+    face_detect_rl.anchor_number = ANCHOR_NUM;
+    face_detect_rl.anchor = anchor;
+    face_detect_rl.threshold = 0.7;
+    face_detect_rl.nms_value = 0.3;
+    region_layer_init(&face_detect_rl, 20, 15, 30, camera_ctx.ai_image->width, camera_ctx.ai_image->height);
+    while (true)
     {
-        while (g_dvp_finish_flag == false)
+        while (camera_ctx.dvp_finish_flag == false)
             ;
-        g_dvp_finish_flag = false;
-        lcd_draw_picture(0, 0, 320, 240, gram_mux ? lcd_gram1 : lcd_gram0);
-        gram_mux ^= 0x01;
+        camera_ctx.dvp_finish_flag = false;
+        uint32_t *lcd_gram = camera_ctx.gram_mux ? (uint32_t *)camera_ctx.lcd_image1->addr : (uint32_t *)camera_ctx.lcd_image0->addr;
+        camera_ctx.gram_mux ^= 0x01;
+
+        float* output;
+        size_t output_size;
+        if(kpu_run(model_handle,camera_ctx.ai_image->addr)!=0)
+        {
+            const char *fail_str="Cannot run kmodel.\n";
+            io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
+        }
+        else
+        {
+            kpu_get_output(model_handle, 0, (uint8_t **)&output, &output_size);
+        }
+        face_detect_rl.input = output;
+        region_layer_run(&face_detect_rl, &face_detect_info);
+        for (uint32_t face_cnt = 0; face_cnt < face_detect_info.obj_number; face_cnt++) {
+            draw_edge(lcd_gram, &face_detect_info, face_cnt, RED);
+        }        
+        lcd_draw_picture(0, 0, 320, 240, lcd_gram);
         const char *sig = {"vTask5run\n"};
         io_write(uart1,(uint8_t *)sig,strlen(sig));
         vTaskDelay(100 / portTICK_RATE_MS);
     }
 }
+
 
 int main()
 {
@@ -394,7 +537,9 @@ int main()
     configASSERT(file_dvp);
     dma0 = dma_open_free();
     configASSERT(dma0);
-
+    spi_flash = io_open("/dev/spi3");
+    configASSERT(spi_flash);
+    
     // init_rgb();
     init_led();
     usleep(10*1000);
@@ -408,6 +553,10 @@ int main()
 
     sysctl_set_spi0_dvp_data(1);
     sysctl_set_power_mode(SYSCTL_POWER_BANK6, SYSCTL_POWER_V18);
+    sysctl_set_power_mode(SYSCTL_POWER_BANK7, SYSCTL_POWER_V18);
+    sysctl_pll_set_freq(SYSCTL_PLL0, 800000000UL);
+    sysctl_pll_set_freq(SYSCTL_PLL1, 300000000UL); 
+    sysctl_pll_set_freq(SYSCTL_PLL2, 45158400UL);
     lcd_init();
     usleep(10*1000);
 
@@ -418,23 +567,30 @@ int main()
     lcd_draw_string(16, 40, const_cast<char *>("Hello World!"), (uint16_t)RED);
     // init_timer(timer1);
     usleep(100*1000);
-    // init_sdcard();
+    init_sdcard();
     lcd_draw_string(16, 60, const_cast<char *>("LCD OK!"), (uint16_t)RED);
     // test sd card
     usleep(20*1000);
     // find_sdcard();
+    test_write_sdcard();
+
     usleep(100*1000);
-    dvp_init();
+    dvp_init(&camera_ctx);
     ov2640_init();
     lcd_draw_string(16, 80, const_cast<char *>("Camera OK!"), (uint16_t)RED);
     usleep(100*1000);
+    w25qxx_init(spi_flash);
+    usleep(100*1000);
+    model_handle=kmodel_get("/fs/detect.kmodel");
+    lcd_draw_string(16, 100, const_cast<char *>("KPU OK!"), (uint16_t)RED);
+    
     vTaskSuspendAll();
     xTaskCreate(TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
     // xTaskCreate(TaskFunction_t(vTask2), "vTask2", 128, NULL, 2, NULL);
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTask3), "vTask3", 128, NULL, 5, NULL);
     // xTaskCreate(TaskFunction_t(vTask4), "vTask4", 128, NULL, 4, NULL);
     // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
-    xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTask5), "vTask5", 512, NULL, 5, NULL);
+    xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskDetect), "vTaskDetect", 512, NULL, 5, NULL);
 
     if (!xTaskResumeAll())
     {
@@ -445,4 +601,5 @@ int main()
     io_write(uart1, (uint8_t *)sig, strlen(sig));
     while (1)
         ;
+
 }
