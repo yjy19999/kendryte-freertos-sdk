@@ -484,6 +484,7 @@ void vTaskDetect()
     face_detect_rl.threshold = 0.7;
     face_detect_rl.nms_value = 0.3;
     region_layer_init(&face_detect_rl, 20, 15, 30, camera_ctx.ai_image->width, camera_ctx.ai_image->height);
+    
     while (true)
     {
         while (camera_ctx.dvp_finish_flag == false)
@@ -494,24 +495,29 @@ void vTaskDetect()
 
         float* output;
         size_t output_size;
+        const char *fail_str="Cannot run kmodel.\n";
+
         if(kpu_run(model_handle,camera_ctx.ai_image->addr)!=0)
-        {
-            const char *fail_str="Cannot run kmodel.\n";
+        {  
             io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
         }
         else
         {
-            kpu_get_output(model_handle, 0, (uint8_t **)&output, &output_size);
+            if(0!=kpu_get_output(model_handle, 0, (uint8_t **)&output, &output_size))
+            {
+                io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
+            }
         }
+
         face_detect_rl.input = output;
         region_layer_run(&face_detect_rl, &face_detect_info);
         for (uint32_t face_cnt = 0; face_cnt < face_detect_info.obj_number; face_cnt++) {
             draw_edge(lcd_gram, &face_detect_info, face_cnt, RED);
         }        
         lcd_draw_picture(0, 0, 320, 240, lcd_gram);
-        const char *sig = {"vTask5run\n"};
-        io_write(uart1,(uint8_t *)sig,strlen(sig));
-        vTaskDelay(100 / portTICK_RATE_MS);
+        // const char *sig = {"vTask5run\n"};
+        // io_write(uart1,(uint8_t *)sig,strlen(sig));
+        vTaskDelay(10 / portTICK_RATE_MS);
     }
 }
 
@@ -590,15 +596,15 @@ int main()
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTask3), "vTask3", 128, NULL, 5, NULL);
     // xTaskCreate(TaskFunction_t(vTask4), "vTask4", 128, NULL, 4, NULL);
     // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
-    xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskDetect), "vTaskDetect", 512, NULL, 5, NULL);
+    xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskDetect), "vTaskDetect", 8192, NULL, 5, NULL);
 
     if (!xTaskResumeAll())
     {
         taskYIELD();
     }
 
-    const char *sig = {"run here!\n"};
-    io_write(uart1, (uint8_t *)sig, strlen(sig));
+    // const char *sig = {"run here!\n"};
+    // io_write(uart1, (uint8_t *)sig, strlen(sig));
     while (1)
         ;
 

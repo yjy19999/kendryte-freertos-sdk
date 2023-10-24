@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 #include "region_layer.h"
+#include "main.h"
 
 typedef struct
 {
