@@ -18,6 +18,9 @@ extern handle_t dma0;
 extern handle_t sd0;
 extern handle_t file_dvp;
 extern handle_t spi_flash;
+extern handle_t model_handle;
+extern handle_t uart_radar1;
+extern handle_t uart_radar2;
 /*****************************SOFTWARE-GPIO********************************/
 // 软件GPIO口，与程序对应
 #define LED0_GPIONUM          (0)

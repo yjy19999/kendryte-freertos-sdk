@@ -79,7 +79,8 @@ handle_t sd0;
 handle_t file_dvp;
 handle_t spi_flash;
 handle_t model_handle;
-
+handle_t uart_radar1;
+handle_t uart_radar2;
 std::deque<uint8_t> queue_usb;
 extern camera_context_t camera_ctx;
 int frame_count = 0;
@@ -89,6 +90,9 @@ std::complex<float> recv_data[4][frame_length / 4];
 
 fft_data_t *input_data;
 fft_data_t *output_data;
+
+SemaphoreHandle_t xMutexUsb = xSemaphoreCreateMutex();
+
 
 static region_layer_t face_detect_rl;
 static obj_info_t face_detect_info;
@@ -152,10 +156,10 @@ void deinit_led(void)
     gpio_set_drive_mode(gio, LED1_GPIONUM, GPIO_DM_INPUT);
 }
 
-void init_uart(handle_t uart)
+void init_uart(handle_t uart,uint32_t baud,uint32_t timeout)
 {
-    uart_config(uart, 115200, 8, UART_STOP_1, UART_PARITY_NONE);
-    uart_set_read_timeout(uart, 10 * 1000);
+    uart_config(uart, baud, 8, UART_STOP_1, UART_PARITY_NONE);
+    uart_set_read_timeout(uart, timeout);
 }
 
 void init_key(void)
@@ -400,6 +404,46 @@ void vTask3()
     }
 }
 
+void vTaskRecv()
+{
+    int recv_cnt=0;
+    uint8_t recv=0;
+    const int read_size=1;
+    uint8_t write_buf[10];
+    // initialize the queue
+    if(!queue_usb.empty())
+    {
+        queue_usb.clear();
+    }
+    while(true)
+    {
+        while(io_read(uart_radar1, &recv, read_size) != read_size)
+            ;
+        xSemaphoreTake(xMutexUsb, portMAX_DELAY);
+        queue_usb.push_back(recv);
+        xSemaphoreGive(xMutexUsb, portMAX_DELAY);
+        recv_cnt++;
+        if(queue_usb.size()>50)
+        {
+            while(!queue_usb.empty() && queue_usb.front()!=0x56)
+            {
+                queue_usb.pop_front();
+            }
+        }
+
+        if(queue_usb.size()>4 && queue_usb[1!=0x41])
+        {
+            queue_usb.clear();
+        }
+        // if(recv_cnt%10==0)
+        // {
+        //     std::copy(queue_usb.begin(),queue_usb.begin()+9,write_buf);
+        //     io_write(uart1,write_buf,10);
+        // }
+        vTaskDelay(100 / portTICK_RATE_MS);
+    }
+}
+
 void vTask4()
 {
     // uint8_t recv[30]={0};
@@ -531,6 +575,10 @@ int main()
     configASSERT(gio);
     uart1 = io_open("/dev/uart1");
     configASSERT(uart1);
+    uart_radar1 = io_open("/dev/uart2");
+    configASSERT(uart_radar1);
+    uart_radar2 = io_open("/dev/uart3");
+    configASSERT(uart_radar2);
     timer1 = io_open("/dev/timer1");
     configASSERT(timer1);
     pwm_rgb = io_open("/dev/pwm0");
@@ -550,14 +598,18 @@ int main()
     init_led();
     usleep(10*1000);
 
-    init_uart(uart1);
+    init_uart(uart1,115200,10*1000);
     usleep(10*1000);
-    
+    init_uart(uart_radar1,115200,10*1000);
+    usleep(10*1000);
+    init_uart(uart_radar2,115200,10*1000);
+    usleep(10*1000);
     // init_timer(timer0,10*1e6,NULL);
     init_rgb_pwm();
     usleep(10*1000);
 
     sysctl_set_spi0_dvp_data(1);
+    sysctl_set_power_mode(SYSCTL_POWER_BANK3, SYSCTL_POWER_V33);
     sysctl_set_power_mode(SYSCTL_POWER_BANK6, SYSCTL_POWER_V18);
     sysctl_set_power_mode(SYSCTL_POWER_BANK7, SYSCTL_POWER_V18);
     sysctl_pll_set_freq(SYSCTL_PLL0, 800000000UL);
@@ -594,7 +646,7 @@ int main()
     xTaskCreate(TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
     // xTaskCreate(TaskFunction_t(vTask2), "vTask2", 128, NULL, 2, NULL);
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTask3), "vTask3", 128, NULL, 5, NULL);
-    // xTaskCreate(TaskFunction_t(vTask4), "vTask4", 128, NULL, 4, NULL);
+    xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskRecv), "vTaskRecv", 128, NULL, 4, NULL);
     // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
     xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskDetect), "vTaskDetect", 8192, NULL, 5, NULL);
 

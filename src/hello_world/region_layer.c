@@ -310,7 +310,7 @@ static void do_nms_sort(region_layer_t *rl, box_t *boxes, float **probs)
     {
         for (i = 0; i < boxes_number; ++i)
             s[i].class = k;
-        qsort(s, boxes_number, sizeof(sortable_box_t), nms_comparator);
+        qsort(s, boxes_number, sizeof(sortable_box_t), (__compar_fn_t)nms_comparator);
         for (i = 0; i < boxes_number; ++i)
         {
             if (probs[s[i].index][k] == 0)

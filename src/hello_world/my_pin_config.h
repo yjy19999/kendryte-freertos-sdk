@@ -30,6 +30,11 @@
 // Usb uart
 #define PIN_UART_USB_RX       (4)
 #define PIN_UART_USB_TX       (5)
+// Uart radar
+#define PIN_UART_RADAR1_RX    (20)
+#define PIN_UART_RADAR1_TX    (21) 
+#define PIN_UART_RADAR2_RX    (22)
+#define PIN_UART_RADAR2_TX    (23)  
 // LCD
 #define PIN_LCD_CS            (36)
 #define PIN_LCD_RST           (37)
@@ -60,6 +65,10 @@
 #define FUNC_KEY              (5 + FUNC_GPIOHS0)
 #define FUNC_USB_RX           FUNC_UART1_RX
 #define FUNC_USB_TX           FUNC_UART1_TX
+#define FUNC_RADAR1_RX        FUNC_UART2_RX
+#define FUNC_RADAR1_TX        FUNC_UART2_TX  
+#define FUNC_RADAR2_RX        FUNC_UART3_RX
+#define FUNC_RADAR2_TX        FUNC_UART3_TX
 #define FUNC_LCD_CS           (FUNC_SPI0_SS3)
 #define FUNC_LCD_RST          (FUNC_GPIOHS0 + LCD_RST_GPIONUM)
 #define FUNC_LCD_RS           (FUNC_GPIOHS0 + LCD_RS_GPIONUM)
@@ -74,7 +83,7 @@
 const fpioa_cfg_t g_fpioa_cfg =
 {
     .version = PIN_CFG_VERSION,
-    .functions_count = 24,
+    .functions_count = 28,
     .functions =
     {
         {PIN_LED_0, fpioa_function_t(FUNC_LED0)},
@@ -84,6 +93,10 @@ const fpioa_cfg_t g_fpioa_cfg =
         {PIN_RGB_B, fpioa_function_t(FUNC_RGB_B)},
         {PIN_UART_USB_RX, fpioa_function_t(FUNC_USB_RX)},
         {PIN_UART_USB_TX, fpioa_function_t(FUNC_USB_TX)},
+        {PIN_UART_RADAR1_RX, fpioa_function_t(FUNC_RADAR1_RX)},
+        {PIN_UART_RADAR1_TX, fpioa_function_t(FUNC_RADAR1_TX)},
+        {PIN_UART_RADAR2_RX, fpioa_function_t(FUNC_RADAR2_RX)},
+        {PIN_UART_RADAR2_TX, fpioa_function_t(FUNC_RADAR2_TX)},
         {PIN_KEY, fpioa_function_t(FUNC_KEY)},
         {PIN_LCD_CS, fpioa_function_t(FUNC_LCD_CS)},
         {PIN_LCD_RST, fpioa_function_t(FUNC_LCD_RST)},
