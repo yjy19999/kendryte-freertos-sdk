@@ -21,6 +21,7 @@
 // Settings for freertos https://blog.csdn.net/kunkliu/article/details/125890955
 
 #include <FreeRTOS.h>
+#include "semphr.h"
 #include <task.h>
 #include <string.h>
 // #include <cstring>
@@ -417,11 +418,13 @@ void vTaskRecv()
     }
     while(true)
     {
+        xSemaphoreTake(xMutexUsb, portMAX_DELAY);
         while(io_read(uart_radar1, &recv, read_size) != read_size)
             ;
-        xSemaphoreTake(xMutexUsb, portMAX_DELAY);
+        // xSemaphoreTake(xMutexUsb, portMAX_DELAY);
+        xSemaphoreGive(xMutexUsb);
         queue_usb.push_back(recv);
-        xSemaphoreGive(xMutexUsb, portMAX_DELAY);
+        
         recv_cnt++;
         if(queue_usb.size()>50)
         {

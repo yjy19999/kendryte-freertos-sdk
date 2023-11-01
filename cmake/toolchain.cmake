@@ -13,8 +13,17 @@ elseif(NOT "${TOOLCHAIN}" MATCHES "/$")
     global_set(TOOLCHAIN "${TOOLCHAIN}")
 endif()
 
-global_set(TOOLCHAIN "/opt/kendryte-toolchain/bin")
+set(SYSTEM_NAME "Windows")
 
+message("Current operating system: ${SYSTEM_NAME}")
+
+if(${SYSTEM_NAME} STREQUAL "Windows")
+    global_set(TOOLCHAIN "C:/Users/yjy19/Desktop/K210/kendryte-toolchain/bin")
+elseif(${SYSTEM_NAME} STREQUAL "Linux")
+    global_set(TOOLCHAIN "/opt/kendryte-toolchain/bin") 
+else()
+    message(FATAL_ERROR "Unsupported operating system: ${SYSTEM_NAME}")
+endif()
 if (NOT TOOLCHAIN)
     message(FATAL_ERROR "TOOLCHAIN must be set, to absolute path of kendryte-toolchain dist/bin folder.")
 endif ()
