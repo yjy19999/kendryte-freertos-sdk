@@ -32,6 +32,7 @@
 #include <storage/sdcard.h>
 #include <sleep.h>
 #include <stdio.h>
+#include <algorithm>
 #include "my_pin_config.h"
 #include "main.h"
 
@@ -74,11 +75,20 @@ extern "C"
 
 const int RADAR_FRAME_LENGTH=(FFT_SAMPLE*CHIRP*2*IQ_NUM+IQ_NUM+HEADER_SIZE+END_SIZE)*TX_NUM*RX_NUM;
 
+enum RecvState
+{
+    RECV_NULL,
+    RECV_START,
+    RECV_HEAD,
+    RECV_GET_SIZE
+};
+
 typedef struct _complex_hard
 {
     int16_t real;
     int16_t imag;
 } complex_hard_t;
+
 
 // handle for devices
 handle_t gio;
@@ -93,20 +103,34 @@ handle_t sd0;
 handle_t file_dvp;
 handle_t spi_flash;
 handle_t model_handle;
+
 handle_t uart_radar1;
 handle_t uart_radar2;
-std::deque<uint8_t> queue_usb;
+
+std::deque<uint8_t> queue_usb_0;
+std::deque<uint8_t> queue_usb_1;
+std::deque<uint8_t> *pqueue_usb;
+std::deque<uint8_t> *pqueue_usb_back;
+bool recv_success = false;
+bool recv_copy = false;
+const int read_size=1000;
+uint8_t recv0[read_size+5]={0};
+uint8_t recv1[read_size+5]={0};
+uint8_t* precv;
+uint8_t* precv_back;
+
 extern camera_context_t camera_ctx;
 int frame_count = 0;
-const int frame_length = 10;
-uint8_t data_buf[frame_length];
-std::complex<float> recv_data[4][frame_length / 4];
+// const int frame_length = 10;
+// uint8_t data_buf[frame_length];
+std::complex<float> recv_data[4][RADAR_FRAME_LENGTH / 4];
 
 fft_data_t *input_data;
 fft_data_t *output_data;
 
 SemaphoreHandle_t xMutexUsb = xSemaphoreCreateMutex();
-
+SemaphoreHandle_t xMutexCopy = xSemaphoreCreateMutex();
+SemaphoreHandle_t xMutexPrint = xSemaphoreCreateMutex();
 
 static region_layer_t face_detect_rl;
 static obj_info_t face_detect_info;
@@ -447,93 +471,152 @@ void vTask3()
     }
 }
 
+
 void vTaskRecv()
 {
+
     int recv_cnt=0;
-    uint8_t recv[30]={0};
-    const int read_size=30;
-    uint8_t write_buf[10];
     // initialize the queue
-    if(!queue_usb.empty())
-    {
-        xSemaphoreTake(xMutexUsb, portMAX_DELAY);
-        queue_usb.clear();
-        xSemaphoreGive(xMutexUsb);
-    }
+
     while(true)
     {
-        xSemaphoreTake(xMutexUsb, portMAX_DELAY);
-        while(io_read(uart_radar1, &recv, read_size) != read_size)
+        xSemaphoreTake(xMutexCopy, portMAX_DELAY);
+        while (io_read(uart_radar1, precv, read_size) != read_size)
+        {
             ;
-        // xSemaphoreTake(xMutexUsb, portMAX_DELAY);
-        xSemaphoreGive(xMutexUsb);
-        queue_usb.push_back(recv);
-        
-        recv_cnt++;
-        if(queue_usb.size()>50)
-        {
-            queue_usb.push_back(recv[i]);
         }
-        
-        
-        recv_cnt++;
-        if(recv_cnt%10==0)
-        {
-            printf("recv_cnt is %d\n",recv_cnt);
-            printf("queue_length is %ld\n",queue_usb.size());
-        }
+        std::swap(precv,precv_back);
+        recv_cnt+=read_size;
+        recv_copy=true;
+        xSemaphoreGive(xMutexCopy);
+        vTaskDelay(10 / portTICK_RATE_MS);
+    }
+}
 
-        if(queue_usb.size()>RADAR_FRAME_LENGTH)
+
+void vTaskCopy()
+{
+    unsigned int frame_num=0;
+    RecvState recv_state=RECV_NULL;
+    RecvState pre_state=recv_state;
+
+    while(true)
+    {
+        xSemaphoreTake(xMutexCopy, portMAX_DELAY);
+        if(recv_copy)
         {
-            queue_usb.clear();
+            for(int i=0;i<read_size;i++)
+            {
+                pqueue_usb->push_back(precv_back[i]);
+            }
+            recv_state=RECV_START;
+            recv_copy=false;
         }
+        xSemaphoreGive(xMutexCopy);
+        // recv_cnt++;
+        // if(recv_cnt%1000==0)
+        // {
+        //     printf("recv_cnt is %d\n",recv_cnt);
+        //     printf("queue_length is %ld\n",pqueue_usb->size());
+        // }
+        switch (recv_state)
+        {
+        case RECV_NULL:
+            ;
+            break;
+        case RECV_START:
+            while(!pqueue_usb->empty() && pqueue_usb->front()!='V')
+            {
+                pqueue_usb->pop_front();                
+            }
+            recv_state=RECV_HEAD;
+            break;
+        case RECV_HEAD:
+            if(pqueue_usb->size()>4)
+            {
+                if((*pqueue_usb)[1]!='A' || (*pqueue_usb)[3]!='X')
+                {
+                    pqueue_usb->clear();
+                    recv_state=RECV_START;
+                }
+                else
+                {
+                    frame_num=((*pqueue_usb)[2]);
+                    recv_state=RECV_GET_SIZE;
+                }
+            }
+            break;
+        case RECV_GET_SIZE:
+            if(pqueue_usb->size()>RADAR_FRAME_LENGTH)
+            {
+                
+                printf("frame num is %u\n",frame_num);
+                // io_write(uart1,write_buf,10);
+                // pqueue_usb=pqueue_usb_back;
+                xSemaphoreTake(xMutexUsb, portMAX_DELAY);
+                pqueue_usb_back->clear();
+                std::swap(pqueue_usb,pqueue_usb_back);
+                recv_success=true;
+                xSemaphoreGive(xMutexUsb);
+                pqueue_usb->clear();
+
+                recv_state=RECV_START;
+            }
+            break;
+        default:
+            break;
+        }
+        // if(pre_state!=recv_state)
+        // {
+        //     pre_state=recv_state;
+        //     printf("current recv_state is %d",recv_state);
+        // }
+
         // if(recv_cnt%10==0)
         // {
         //     std::copy(queue_usb.begin(),queue_usb.begin()+9,write_buf);
         //     io_write(uart1,write_buf,10);
         // }
-        xSemaphoreGive(xMutexUsb);
-        vTaskDelay(100 / portTICK_RATE_MS);
+
+        vTaskDelay(10 / portTICK_RATE_MS);
     }
 }
+
 
 void vTaskProcess()
 {
     while (true)
     {
         xSemaphoreTake(xMutexUsb, portMAX_DELAY);
-        if(queue_usb.size()>50)
+        if (recv_success)
         {
-            while(!queue_usb.empty() && queue_usb.front()!=0x56)
+            int idx_begin[4];
+            int idx_end[4];
+            // idx_end=frame_length*(i+1)/4-4;
+            for (int i = 0; i < 4; i++)
             {
-                queue_usb.pop_front();                
+                int save_idx = 0;
+                idx_begin[i] = RADAR_FRAME_LENGTH * i / 4 + 3;
+                idx_end[i] = RADAR_FRAME_LENGTH * (i + 1) / 4 - 4;
+                for (int j = idx_begin[i]; j < idx_end[i]; j += 4)
+                {
+                    recv_data[i][save_idx] = std::complex<float>((*pqueue_usb_back)[j] + (*pqueue_usb_back)[j + 1] * 255, (*pqueue_usb_back)[j + 2] + (*pqueue_usb_back)[j + 3] * 255);
+                    save_idx++;
+                }
             }
-        }
-
-        if(queue_usb.size()>4 && (queue_usb[1]!=0x41))
-        {
-            queue_usb.clear();
-        }
-        else
-        {
-            int frame_num=(queue_usb[2]&0x0F);
-            if(queue_usb.size()>RADAR_FRAME_LENGTH)
-            {
-                
-                printf("frame num is %d\n",frame_num);
-                // io_write(uart1,write_buf,10);
-                queue_usb.clear();
-            }
+            frame_count++;
+            recv_success=false;
+            printf("processed %d frames",frame_count);
         }
         xSemaphoreGive(xMutexUsb);
-        vTaskDelay(100 / portTICK_RATE_MS);
+        vTaskDelay(10 / portTICK_RATE_MS);
     }
 }
 
 void vTask4()
 {
     // uint8_t recv[30]={0};
-    bool recv_success = false;
+    
     uint8_t recv = 0;
     const char *hel = {"hello uart!\n"};
     // io_write(uart1, (uint8_t *)hel, strlen(hel));
@@ -546,51 +629,34 @@ void vTask4()
         //     printf("time out \n");
         // while (io_read(uart1, &recv, 1) != 1)
             ;
-        queue_usb.push_back(recv);
-        // io_write(uart1, recv, 10);
-        if (queue_usb.size() > frame_length + 3)
-        {
-            if (queue_usb.front() != 0x56)
-            {
-                queue_usb.pop_front();
-            }
-            else
-            {
-                if (queue_usb[1] == 0x30 && queue_usb[2] == 0x3A)
-                {
-                    while (queue_usb.size() < frame_length)
-                    {
-                        // while (io_read(uart1, &recv, 1) != 1)
-                            ;
-                        queue_usb.push_back(recv);
-                    }
-                    std::copy(queue_usb.begin(), queue_usb.begin() + frame_length, data_buf);
-                    for (int i = 0; i < frame_length; i++)
-                    {
-                        queue_usb.pop_front();
-                    }
-                    recv_success = true;
-                }
-            }
-        }
-        if (recv_success)
-        {
-            int idx_begin[4];
-            int idx_end[4];
-            // idx_end=frame_length*(i+1)/4-4;
-            for (int i = 0; i < 4; i++)
-            {
-                int save_idx = 0;
-                idx_begin[i] = frame_length * i / 4 + 3;
-                idx_end[i] = frame_length * (i + 1) / 4 - 4;
-                for (int j = idx_begin[i]; j < idx_end[i]; j += 4)
-                {
-                    recv_data[i][save_idx] = std::complex<double>(data_buf[j] + data_buf[j + 1] * 255, data_buf[j + 2] + data_buf[j + 3] * 255);
-                    save_idx++;
-                }
-            }
-            frame_count++;
-        }
+        // queue_usb->push_back(recv);
+        // // io_write(uart1, recv, 10);
+        // if (queue_usb->size() > frame_length + 3)
+        // {
+        //     if (queue_usb.front() != 0x56)
+        //     {
+        //         queue_usb.pop_front();
+        //     }
+        //     else
+        //     {
+        //         if (queue_usb[1] == 0x30 && queue_usb[2] == 0x3A)
+        //         {
+        //             while (queue_usb.size() < frame_length)
+        //             {
+        //                 // while (io_read(uart1, &recv, 1) != 1)
+        //                     ;
+        //                 queue_usb.push_back(recv);
+        //             }
+        //             std::copy(queue_usb.begin(), queue_usb.begin() + frame_length, data_buf);
+        //             for (int i = 0; i < frame_length; i++)
+        //             {
+        //                 queue_usb.pop_front();
+        //             }
+        //             recv_success = true;
+        //         }
+        //     }
+        // }
+
         // uint8_t front_data = 0;
         // if (usb_recv_len > 10)
         // {
@@ -661,7 +727,7 @@ int main()
 
     // init_uart(uart1,115200,10*1000);
     usleep(10*1000);
-    init_uart(uart_radar1,115200,10*1000);
+    init_uart(uart_radar1,921600,10*1000);
     usleep(10*1000);
     init_uart(uart_radar2,115200,10*1000);
     usleep(10*1000);
@@ -703,12 +769,30 @@ int main()
     model_handle=kmodel_get("/fs/detect.kmodel");
     lcd_draw_string(16, 100, const_cast<char *>("KPU OK!"), (uint16_t)RED);
     
+    recv_copy=false;
+    recv_success=false;
+    
+    pqueue_usb=&queue_usb_0;
+    pqueue_usb_back=&queue_usb_1;
+    precv=recv0;
+    precv_back=recv1;
+
+    if(!pqueue_usb->empty())
+    {   
+        pqueue_usb->clear();   
+    }
+    if(!pqueue_usb_back->empty())
+    {   
+        pqueue_usb_back->clear();   
+    }
+    
     vTaskSuspendAll();
     xTaskCreate(TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
     // xTaskCreate(TaskFunction_t(vTask2), "vTask2", 128, NULL, 2, NULL);
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTask3), "vTask3", 128, NULL, 5, NULL);
-    xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskRecv), "vTaskRecv", 128, NULL, 4, NULL);
-    xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskProcess), "vTaskProcess", 512, NULL, 3, NULL);
+    xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskRecv), "vTaskRecv", 1024, NULL, 4, NULL);
+    xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskCopy), "vTaskCopy", 1024, NULL, 4, NULL);
+    xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskProcess), "vTaskProcess", 1024, NULL, 5, NULL);
     // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
     // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskDetect), "vTaskDetect", 8192, NULL, 5, NULL);
 
@@ -717,8 +801,7 @@ int main()
         taskYIELD();
     }
 
-    // const char *sig = {"run here!\n"};
-    // io_write(uart1, (uint8_t *)sig, strlen(sig));
+    printf("Run here!\n");
     while (1)
         ;
 

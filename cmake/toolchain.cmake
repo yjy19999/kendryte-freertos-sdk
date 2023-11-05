@@ -13,7 +13,8 @@ elseif(NOT "${TOOLCHAIN}" MATCHES "/$")
     global_set(TOOLCHAIN "${TOOLCHAIN}")
 endif()
 
-set(SYSTEM_NAME "Windows")
+# set(SYSTEM_NAME "Windows")
+set(SYSTEM_NAME "Linux")
 
 message("Current operating system: ${SYSTEM_NAME}")
 
