@@ -255,13 +255,13 @@ int ov2640_init(void)
     reg |= OV2640_RD_Reg(OV2640_CHIPID_LOW);
     
     char id_str[20];
-    sprintf(id_str,"ID: 0x%04X \r\n", reg);
-    io_write(uart1,(uint8_t*)id_str,20);
+    // sprintf(id_str,"ID: 0x%04X \r\n", reg);
+    // io_write(uart1,(uint8_t*)id_str,20);
     usleep(100 * 1000);
     if (reg !=OV2640_ID)
     {
         char* fault_str="ov2640 get id error.";
-        io_write(uart1,(uint8_t*)fault_str,20);
+        // io_write(uart1,(uint8_t*)fault_str,20);
     }
     usleep(100 * 1000);
     //dvp_cam_init();
@@ -273,7 +273,7 @@ int ov2640_init(void)
     ov2640_read_id(&v_manuf_id, &v_device_id);
     char man_dev_id[50];
     sprintf(man_dev_id,"manuf_id:0x%04x,device_id:0x%04x\n", v_manuf_id, v_device_id);
-    io_write(uart1,(uint8_t*)man_dev_id,50);
+    // io_write(uart1,(uint8_t*)man_dev_id,50);
     uint16_t index = 0;
     for (index = 0; ov2640_config[index][0]; index++)
         OV2640_WR_Reg(ov2640_config[index][0], ov2640_config[index][1]);

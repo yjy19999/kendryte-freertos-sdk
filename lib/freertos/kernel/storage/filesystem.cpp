@@ -143,7 +143,7 @@ public:
         {
             char buf[3];
             sprintf(buf,"%d\n",int(res));
-            io_write(uart1,(uint8_t*)buf,std::strlen(buf));
+            // io_write(uart1,(uint8_t*)buf,std::strlen(buf));
         }
 
         check_fatfs_error(res);
@@ -246,7 +246,7 @@ int filesystem_mount(const char *name, handle_t storage_handle)
         const char *sig = {"run fs here!\n"};
         
         auto fs = k_filesystem::install_filesystem(system_handle_to_object(storage_handle).move_as<block_storage_driver>());
-        io_write(uart1, (uint8_t *)sig, strlen(sig));
+        // io_write(uart1, (uint8_t *)sig, strlen(sig));
         int try_time=5;
         FRESULT res=FR_OK;
         res=f_mount(&fs->FatFS, normalize_path(name), 1);
@@ -254,7 +254,7 @@ int filesystem_mount(const char *name, handle_t storage_handle)
         {
             char fail_code_buf[30];
             sprintf(fail_code_buf,"get error code %d\n",res);
-            io_write(uart1,(uint8_t*)fail_code_buf,strlen(fail_code_buf));
+            // io_write(uart1,(uint8_t*)fail_code_buf,strlen(fail_code_buf));
         }
         while(FR_OK!=res && try_time>0)
         {
@@ -265,7 +265,7 @@ int filesystem_mount(const char *name, handle_t storage_handle)
         if(try_time<0)
         {
             const char *fail_str = {"mounted for 5 times, all failed!\n"};
-            io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
+            // io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
         }
         return 0;
     }

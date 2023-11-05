@@ -81,7 +81,7 @@ public:
         else
         {
             char err_str[]="kmodel load failed\n";
-            io_write(uart1,(uint8_t*)err_str,strlen(err_str));
+            // io_write(uart1,(uint8_t*)err_str,strlen(err_str));
             throw std::runtime_error("Cannot load kmodel.");
         }
     }

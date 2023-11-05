@@ -63,8 +63,10 @@
 #define FUNC_RGB_G            (FUNC_TIMER0_TOGGLE2)
 #define FUNC_RGB_B            (FUNC_TIMER0_TOGGLE3)
 #define FUNC_KEY              (5 + FUNC_GPIOHS0)
-#define FUNC_USB_RX           FUNC_UART1_RX
-#define FUNC_USB_TX           FUNC_UART1_TX
+// #define FUNC_USB_RX           FUNC_UART1_RX
+// #define FUNC_USB_TX           FUNC_UART1_TX
+#define FUNC_USB_RX           FUNC_UARTHS_RX
+#define FUNC_USB_TX           FUNC_UARTHS_TX
 #define FUNC_RADAR1_RX        FUNC_UART2_RX
 #define FUNC_RADAR1_TX        FUNC_UART2_TX  
 #define FUNC_RADAR2_RX        FUNC_UART3_RX

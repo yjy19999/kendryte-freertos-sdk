@@ -31,6 +31,7 @@
 #include <filesystem.h>
 #include <storage/sdcard.h>
 #include <sleep.h>
+#include <stdio.h>
 #include "my_pin_config.h"
 #include "main.h"
 
@@ -60,6 +61,18 @@ extern "C"
 #define FFT_FORWARD_SHIFT   0x0U
 #define FFT_BACKWARD_SHIFT  0x1ffU
 #define PI                  3.14159265358979323846
+
+#define RX_ANTENNA_SPACE 2.35e-3
+#define TX_ANTENNA_SPACE 5.54e-3
+#define FFT_SAMPLE 151
+#define CHIRP 1
+#define TX_NUM 1
+#define RX_NUM 4
+#define IQ_NUM 2
+#define HEADER_SIZE 4
+#define END_SIZE 4
+
+const int RADAR_FRAME_LENGTH=(FFT_SAMPLE*CHIRP*2*IQ_NUM+IQ_NUM+HEADER_SIZE+END_SIZE)*TX_NUM*RX_NUM;
 
 typedef struct _complex_hard
 {
@@ -112,6 +125,35 @@ INCBIN(model, "../src/hello_world/model.kmodel");
 
 void key_isr();
 void on_tick_timer1();
+
+void hardware_init(void)
+{
+    // set frequency to 400Mhz
+    system_set_cpu_frequency(400000000);
+
+    gio = io_open("/dev/gpio0");
+    configASSERT(gio);
+    // uart1 = io_open("/dev/uart1");
+    // configASSERT(uart1);
+    uart_radar1 = io_open("/dev/uart2");
+    configASSERT(uart_radar1);
+    uart_radar2 = io_open("/dev/uart3");
+    configASSERT(uart_radar2);
+    timer1 = io_open("/dev/timer1");
+    configASSERT(timer1);
+    pwm_rgb = io_open("/dev/pwm0");
+    configASSERT(pwm_rgb);
+    spi_lcd = io_open("/dev/spi0");
+    configASSERT(spi_lcd);
+    spi_sd = io_open("/dev/spi1");
+    configASSERT(spi_sd);
+    file_dvp = io_open("/dev/dvp0");
+    configASSERT(file_dvp);
+    dma0 = dma_open_free();
+    configASSERT(dma0);
+    spi_flash = io_open("/dev/spi3");
+    configASSERT(spi_flash);
+}
 
 void init_rgb_pwm()
 {
@@ -200,7 +242,7 @@ void init_sdcard(void)
     usleep(200*1000);
     configASSERT(filesystem_mount("/fs/0:", sd0) == 0);
     char fs_mount_ok[]="fs mount ok\n";
-    io_write(uart1,(uint8_t *)fs_mount_ok,strlen(fs_mount_ok));
+    // io_write(uart1,(uint8_t *)fs_mount_ok,strlen(fs_mount_ok));
     // int res=filesystem_mount("fs/0/", sd0);
     // SHOW_DEBUG(16,120,std::string(res));
     // SHOW_DEBUG(16,140,"run_here_3"); 
@@ -226,13 +268,13 @@ void find_sdcard()
         // lcd_draw_string(16, show_y, const_cast<char *>(find_data.filename), (uint16_t)RED);
         
         // show_y += 10;
-        io_write(uart1,(uint8_t *)(find_data.filename),strlen(find_data.filename));
+        // io_write(uart1,(uint8_t *)(find_data.filename),strlen(find_data.filename));
         usleep(100*1000);
     } while (filesystem_find_next(find, &find_data));
     filesystem_file_close(find);
 
     char done_str[]="Done";
-    io_write(uart1,(uint8_t *)done_str,strlen(done_str));
+    // io_write(uart1,(uint8_t *)done_str,strlen(done_str));
     // printf("Done\n");
 }
 
@@ -250,7 +292,7 @@ void test_write_sdcard(void)
     if(file==NULL_HANDLE)
     {
         char fail_str[]="open file failed\n";
-        io_write(uart1,(uint8_t*)fail_str,strlen(fail_str));
+        // io_write(uart1,(uint8_t*)fail_str,strlen(fail_str));
     }
 
     char msg[]="k233333333333333333";
@@ -260,7 +302,7 @@ void test_write_sdcard(void)
     filesystem_file_flush(file);
     filesystem_file_set_position(file, 0);
     filesystem_file_read(file, (uint8_t *)buffer, strlen(msg)+1);
-    io_write(uart1,(uint8_t*)buffer,strlen(buffer));
+    // io_write(uart1,(uint8_t*)buffer,strlen(buffer));
     usleep(100*1000);
     filesystem_file_close(file);
 }
@@ -281,7 +323,7 @@ handle_t kmodel_get(const char* model_path)
     if(model_file==NULL_HANDLE)
     {
         char fail_str[]="open file failed\n";
-        io_write(uart1,(uint8_t*)fail_str,strlen(fail_str));
+        // io_write(uart1,(uint8_t*)fail_str,strlen(fail_str));
     }    
     filesystem_file_flush(model_file);
     filesystem_file_set_position(model_file, 0);
@@ -408,13 +450,15 @@ void vTask3()
 void vTaskRecv()
 {
     int recv_cnt=0;
-    uint8_t recv=0;
-    const int read_size=1;
+    uint8_t recv[30]={0};
+    const int read_size=30;
     uint8_t write_buf[10];
     // initialize the queue
     if(!queue_usb.empty())
     {
+        xSemaphoreTake(xMutexUsb, portMAX_DELAY);
         queue_usb.clear();
+        xSemaphoreGive(xMutexUsb);
     }
     while(true)
     {
@@ -428,13 +472,18 @@ void vTaskRecv()
         recv_cnt++;
         if(queue_usb.size()>50)
         {
-            while(!queue_usb.empty() && queue_usb.front()!=0x56)
-            {
-                queue_usb.pop_front();
-            }
+            queue_usb.push_back(recv[i]);
+        }
+        
+        
+        recv_cnt++;
+        if(recv_cnt%10==0)
+        {
+            printf("recv_cnt is %d\n",recv_cnt);
+            printf("queue_length is %ld\n",queue_usb.size());
         }
 
-        if(queue_usb.size()>4 && queue_usb[1!=0x41])
+        if(queue_usb.size()>RADAR_FRAME_LENGTH)
         {
             queue_usb.clear();
         }
@@ -443,6 +492,40 @@ void vTaskRecv()
         //     std::copy(queue_usb.begin(),queue_usb.begin()+9,write_buf);
         //     io_write(uart1,write_buf,10);
         // }
+        xSemaphoreGive(xMutexUsb);
+        vTaskDelay(100 / portTICK_RATE_MS);
+    }
+}
+
+void vTaskProcess()
+{
+    while (true)
+    {
+        xSemaphoreTake(xMutexUsb, portMAX_DELAY);
+        if(queue_usb.size()>50)
+        {
+            while(!queue_usb.empty() && queue_usb.front()!=0x56)
+            {
+                queue_usb.pop_front();                
+            }
+        }
+
+        if(queue_usb.size()>4 && (queue_usb[1]!=0x41))
+        {
+            queue_usb.clear();
+        }
+        else
+        {
+            int frame_num=(queue_usb[2]&0x0F);
+            if(queue_usb.size()>RADAR_FRAME_LENGTH)
+            {
+                
+                printf("frame num is %d\n",frame_num);
+                // io_write(uart1,write_buf,10);
+                queue_usb.clear();
+            }
+        }
+        xSemaphoreGive(xMutexUsb);
         vTaskDelay(100 / portTICK_RATE_MS);
     }
 }
@@ -453,7 +536,7 @@ void vTask4()
     bool recv_success = false;
     uint8_t recv = 0;
     const char *hel = {"hello uart!\n"};
-    io_write(uart1, (uint8_t *)hel, strlen(hel));
+    // io_write(uart1, (uint8_t *)hel, strlen(hel));
     show_proc_id();
 
     while (1)
@@ -461,7 +544,7 @@ void vTask4()
         // send recv data back
         // if(io_read(uart1, recv, 10) < 0)
         //     printf("time out \n");
-        while (io_read(uart1, &recv, 1) != 1)
+        // while (io_read(uart1, &recv, 1) != 1)
             ;
         queue_usb.push_back(recv);
         // io_write(uart1, recv, 10);
@@ -477,7 +560,7 @@ void vTask4()
                 {
                     while (queue_usb.size() < frame_length)
                     {
-                        while (io_read(uart1, &recv, 1) != 1)
+                        // while (io_read(uart1, &recv, 1) != 1)
                             ;
                         queue_usb.push_back(recv);
                     }
@@ -546,13 +629,13 @@ void vTaskDetect()
 
         if(kpu_run(model_handle,camera_ctx.ai_image->addr)!=0)
         {  
-            io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
+            // io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
         }
         else
         {
             if(0!=kpu_get_output(model_handle, 0, (uint8_t **)&output, &output_size))
             {
-                io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
+                // io_write(uart1, (uint8_t *)fail_str, strlen(fail_str));
             }
         }
 
@@ -570,38 +653,13 @@ void vTaskDetect()
 
 
 int main()
-{
-    // set frequency to 400Mhz
-    system_set_cpu_frequency(400000000);
-
-    gio = io_open("/dev/gpio0");
-    configASSERT(gio);
-    uart1 = io_open("/dev/uart1");
-    configASSERT(uart1);
-    uart_radar1 = io_open("/dev/uart2");
-    configASSERT(uart_radar1);
-    uart_radar2 = io_open("/dev/uart3");
-    configASSERT(uart_radar2);
-    timer1 = io_open("/dev/timer1");
-    configASSERT(timer1);
-    pwm_rgb = io_open("/dev/pwm0");
-    configASSERT(pwm_rgb);
-    spi_lcd = io_open("/dev/spi0");
-    configASSERT(spi_lcd);
-    spi_sd = io_open("/dev/spi1");
-    configASSERT(spi_sd);
-    file_dvp = io_open("/dev/dvp0");
-    configASSERT(file_dvp);
-    dma0 = dma_open_free();
-    configASSERT(dma0);
-    spi_flash = io_open("/dev/spi3");
-    configASSERT(spi_flash);
-    
+{    
     // init_rgb();
+    hardware_init();
     init_led();
     usleep(10*1000);
 
-    init_uart(uart1,115200,10*1000);
+    // init_uart(uart1,115200,10*1000);
     usleep(10*1000);
     init_uart(uart_radar1,115200,10*1000);
     usleep(10*1000);
@@ -650,8 +708,9 @@ int main()
     // xTaskCreate(TaskFunction_t(vTask2), "vTask2", 128, NULL, 2, NULL);
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTask3), "vTask3", 128, NULL, 5, NULL);
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskRecv), "vTaskRecv", 128, NULL, 4, NULL);
+    xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskProcess), "vTaskProcess", 512, NULL, 3, NULL);
     // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
-    xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskDetect), "vTaskDetect", 8192, NULL, 5, NULL);
+    // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskDetect), "vTaskDetect", 8192, NULL, 5, NULL);
 
     if (!xTaskResumeAll())
     {
