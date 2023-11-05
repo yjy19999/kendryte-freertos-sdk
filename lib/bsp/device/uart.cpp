@@ -25,7 +25,7 @@
 using namespace sys;
 
 #define UART_BRATE_CONST 16
-#define RINGBUFF_LEN 64
+#define RINGBUFF_LEN 512
 
 typedef struct
 {
@@ -143,6 +143,11 @@ public:
         read_timeout_ = millisecond / portTICK_PERIOD_MS;
     }
 
+    virtual int get_buf_size(void) override
+    {
+        return read_buf_size();
+    }
+    
 private:
     int uart_putc(char c)
     {
@@ -195,6 +200,12 @@ private:
         return cnt;
     }
 
+    int read_buf_size(void)
+    {
+        ringbuffer_t *ring_buff = recv_buf_;
+        return (int)ring_buff->length;
+    }
+
     static void on_irq_apbuart_recv(void *userdata)
     {
         auto &driver = *reinterpret_cast<k_uart_driver *>(userdata);
@@ -211,6 +222,7 @@ private:
             portYIELD_FROM_ISR();
         }
     }
+
 
 private:
     volatile uart_t &uart_;

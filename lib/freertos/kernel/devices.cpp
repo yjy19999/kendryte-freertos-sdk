@@ -351,6 +351,12 @@ void uart_set_read_timeout(handle_t file, size_t millisecond)
     uart->set_read_timeout(millisecond);
 }
 
+int uart_get_buf_size(handle_t file)
+{
+    COMMON_ENTRY(uart);
+    return uart->get_buf_size();
+}
+
 /* GPIO */
 
 uint32_t gpio_get_pin_count(handle_t file)

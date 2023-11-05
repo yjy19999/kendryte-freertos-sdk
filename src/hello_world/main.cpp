@@ -110,14 +110,14 @@ handle_t uart_radar2;
 std::deque<uint8_t> queue_usb_0;
 std::deque<uint8_t> queue_usb_1;
 std::deque<uint8_t> *pqueue_usb;
-std::deque<uint8_t> *pqueue_usb_back;
+// std::deque<uint8_t> *pqueue_usb_back;
 bool recv_success = false;
 bool recv_copy = false;
-const int read_size=1000;
+const int read_size=512;
 uint8_t recv0[read_size+5]={0};
-uint8_t recv1[read_size+5]={0};
+// uint8_t recv1[read_size+5]={0};
 uint8_t* precv;
-uint8_t* precv_back;
+// uint8_t* precv_back;
 
 extern camera_context_t camera_ctx;
 int frame_count = 0;
@@ -481,15 +481,21 @@ void vTaskRecv()
     while(true)
     {
         xSemaphoreTake(xMutexCopy, portMAX_DELAY);
-        while (io_read(uart_radar1, precv, read_size) != read_size)
+        int buf_size=uart_get_buf_size(uart_radar1);
+        // printf("The size of buff is %d\n",buf_size);
+        while (io_read(uart_radar1, precv, buf_size) != buf_size)
         {
             ;
         }
-        std::swap(precv,precv_back);
-        recv_cnt+=read_size;
+        for(int i=0;i<read_size;i++)
+        {
+            pqueue_usb->push_back(precv[i]);
+        }
+        // std::swap(precv,precv_back);
+        recv_cnt+=buf_size;
         recv_copy=true;
         xSemaphoreGive(xMutexCopy);
-        vTaskDelay(10 / portTICK_RATE_MS);
+        vTaskDelay(3 / portTICK_RATE_MS);
     }
 }
 
@@ -505,10 +511,6 @@ void vTaskCopy()
         xSemaphoreTake(xMutexCopy, portMAX_DELAY);
         if(recv_copy)
         {
-            for(int i=0;i<read_size;i++)
-            {
-                pqueue_usb->push_back(precv_back[i]);
-            }
             recv_state=RECV_START;
             recv_copy=false;
         }
@@ -537,7 +539,7 @@ void vTaskCopy()
                 if((*pqueue_usb)[1]!='A' || (*pqueue_usb)[3]!='X')
                 {
                     pqueue_usb->clear();
-                    recv_state=RECV_START;
+                    recv_state=RECV_NULL;
                 }
                 else
                 {
@@ -554,13 +556,13 @@ void vTaskCopy()
                 // io_write(uart1,write_buf,10);
                 // pqueue_usb=pqueue_usb_back;
                 xSemaphoreTake(xMutexUsb, portMAX_DELAY);
-                pqueue_usb_back->clear();
-                std::swap(pqueue_usb,pqueue_usb_back);
+                // pqueue_usb_back->clear();
+                // std::swap(pqueue_usb,pqueue_usb_back);
                 recv_success=true;
                 xSemaphoreGive(xMutexUsb);
                 pqueue_usb->clear();
 
-                recv_state=RECV_START;
+                recv_state=RECV_NULL;
             }
             break;
         default:
@@ -577,8 +579,8 @@ void vTaskCopy()
         //     std::copy(queue_usb.begin(),queue_usb.begin()+9,write_buf);
         //     io_write(uart1,write_buf,10);
         // }
-
-        vTaskDelay(10 / portTICK_RATE_MS);
+        
+        vTaskDelay(1 / portTICK_RATE_MS);
     }
 }
 
@@ -600,7 +602,7 @@ void vTaskProcess()
                 idx_end[i] = RADAR_FRAME_LENGTH * (i + 1) / 4 - 4;
                 for (int j = idx_begin[i]; j < idx_end[i]; j += 4)
                 {
-                    recv_data[i][save_idx] = std::complex<float>((*pqueue_usb_back)[j] + (*pqueue_usb_back)[j + 1] * 255, (*pqueue_usb_back)[j + 2] + (*pqueue_usb_back)[j + 3] * 255);
+                    recv_data[i][save_idx] = std::complex<float>((*pqueue_usb)[j] + (*pqueue_usb)[j + 1] * 255, (*pqueue_usb)[j + 2] + (*pqueue_usb)[j + 3] * 255);
                     save_idx++;
                 }
             }
@@ -773,18 +775,18 @@ int main()
     recv_success=false;
     
     pqueue_usb=&queue_usb_0;
-    pqueue_usb_back=&queue_usb_1;
+    // pqueue_usb_back=&queue_usb_1;
     precv=recv0;
-    precv_back=recv1;
+    // precv_back=recv1;
 
     if(!pqueue_usb->empty())
     {   
         pqueue_usb->clear();   
     }
-    if(!pqueue_usb_back->empty())
-    {   
-        pqueue_usb_back->clear();   
-    }
+    // if(!pqueue_usb_back->empty())
+    // {   
+    //     pqueue_usb_back->clear();   
+    // }
     
     vTaskSuspendAll();
     xTaskCreate(TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
@@ -792,7 +794,7 @@ int main()
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTask3), "vTask3", 128, NULL, 5, NULL);
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskRecv), "vTaskRecv", 1024, NULL, 4, NULL);
     xTaskCreateAtProcessor(PROCESSOR0_ID, TaskFunction_t(vTaskCopy), "vTaskCopy", 1024, NULL, 4, NULL);
-    xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskProcess), "vTaskProcess", 1024, NULL, 5, NULL);
+    // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskProcess), "vTaskProcess", 1024, NULL, 5, NULL);
     // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTask1), "vTask1", 512, NULL, 3, NULL);
     // xTaskCreateAtProcessor(PROCESSOR1_ID, TaskFunction_t(vTaskDetect), "vTaskDetect", 8192, NULL, 5, NULL);
 

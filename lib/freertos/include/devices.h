@@ -105,6 +105,14 @@ void uart_config(handle_t file, uint32_t baud_rate, uint32_t databits, uart_stop
 void uart_set_read_timeout(handle_t file, size_t millisecond);
 
 /**
+ * @brief       Get uart buf length.
+ *
+ * @param[in]   file            The UART handle
+ *
+ */
+int uart_get_buf_size(handle_t file);
+
+/**
  * @brief       Get the pin count of a GPIO controller
  *
  * @param[in]   file        The GPIO controller handle

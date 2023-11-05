@@ -197,6 +197,7 @@ public:
     virtual int read(gsl::span<uint8_t> buffer) = 0;
     virtual int write(gsl::span<const uint8_t> buffer) = 0;
     virtual void set_read_timeout(size_t millisecond) = 0;
+    virtual int get_buf_size(void) = 0;
 };
 
 class gpio_driver : public driver
