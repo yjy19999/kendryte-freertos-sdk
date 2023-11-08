@@ -71,10 +71,10 @@ extern "C"
 #define RX_NUM 4
 #define IQ_NUM 2
 #define HEADER_SIZE 4
-#define END_SIZE 4
+#define END_SIZE 8
 
-const int RADAR_FRAME_LENGTH=(FFT_SAMPLE*CHIRP*2*IQ_NUM+IQ_NUM+HEADER_SIZE+END_SIZE)*TX_NUM*RX_NUM;
-
+// const int RADAR_FRAME_LENGTH=(FFT_SAMPLE*CHIRP*2*IQ_NUM+IQ_NUM+HEADER_SIZE+END_SIZE)*TX_NUM*RX_NUM;
+const int RADAR_FRAME_LENGTH=FFT_SAMPLE*2+HEADER_SIZE+END_SIZE;
 enum RecvState
 {
     RECV_NULL,
@@ -476,7 +476,11 @@ void vTaskRecv()
 {
 
     int recv_cnt=0;
+    unsigned int frame_num=0;
+    RecvState recv_state=RECV_NULL;
+    RecvState pre_state=recv_state;
     // initialize the queue
+    recv_state=RECV_START;
 
     while(true)
     {
@@ -491,11 +495,60 @@ void vTaskRecv()
         {
             pqueue_usb->push_back(precv[i]);
         }
+        // recv_state=RECV_START;
         // std::swap(precv,precv_back);
         recv_cnt+=buf_size;
-        recv_copy=true;
+        // recv_copy=true;
         xSemaphoreGive(xMutexCopy);
-        vTaskDelay(3 / portTICK_RATE_MS);
+        // switch (recv_state)
+        // {
+        // case RECV_NULL:
+        //     ;
+        //     break;
+        // case RECV_START:
+        //     while(!pqueue_usb->empty() && pqueue_usb->front()!='V')
+        //     {
+        //         pqueue_usb->pop_front();                
+        //     }
+        //     recv_state=RECV_HEAD;
+        //     break;
+        // case RECV_HEAD:
+        //     if(pqueue_usb->size()>4)
+        //     {
+        //         if((*pqueue_usb)[1]!='A' || (*pqueue_usb)[3]!='X')
+        //         {
+        //             pqueue_usb->clear();
+        //             recv_state=RECV_START;
+        //         }
+        //         else
+        //         {
+        //             frame_num=((*pqueue_usb)[2]);
+        //             recv_state=RECV_GET_SIZE;
+        //         }
+        //     }
+        //     break;
+        // case RECV_GET_SIZE:
+        //     if(pqueue_usb->size()>20)
+        //     {
+                
+        //         printf("frame num is %u\n",frame_num);
+        //         //io_write(uart1,write_buf,10);
+        //         // pqueue_usb=pqueue_usb_back;
+        //         xSemaphoreTake(xMutexUsb, portMAX_DELAY);
+        //         // pqueue_usb_back->clear();
+        //         // std::swap(pqueue_usb,pqueue_usb_back);
+        //         recv_success=true;
+        //         xSemaphoreGive(xMutexUsb);
+        //         pqueue_usb->clear();
+
+        //         recv_state=RECV_START;
+        //     }
+        //     break;
+        // default:
+        //     break;
+        // }
+        // vTaskDelay(3 / portTICK_RATE_MS);
+        vTaskDelay(1 / portTICK_RATE_MS);
     }
 }
 
@@ -503,18 +556,19 @@ void vTaskRecv()
 void vTaskCopy()
 {
     unsigned int frame_num=0;
-    RecvState recv_state=RECV_NULL;
+    RecvState recv_state=RECV_START
+    ;
     RecvState pre_state=recv_state;
 
     while(true)
     {
         xSemaphoreTake(xMutexCopy, portMAX_DELAY);
-        if(recv_copy)
-        {
-            recv_state=RECV_START;
-            recv_copy=false;
-        }
-        xSemaphoreGive(xMutexCopy);
+        // if(recv_copy)
+        // {
+        //     recv_state=RECV_START;
+        //     recv_copy=false;
+        // }
+        // xSemaphoreGive(xMutexCopy);
         // recv_cnt++;
         // if(recv_cnt%1000==0)
         // {
@@ -539,7 +593,7 @@ void vTaskCopy()
                 if((*pqueue_usb)[1]!='A' || (*pqueue_usb)[3]!='X')
                 {
                     pqueue_usb->clear();
-                    recv_state=RECV_NULL;
+                    recv_state=RECV_START;
                 }
                 else
                 {
@@ -549,7 +603,8 @@ void vTaskCopy()
             }
             break;
         case RECV_GET_SIZE:
-            if(pqueue_usb->size()>RADAR_FRAME_LENGTH)
+            // if(pqueue_usb->size()>RADAR_FRAME_LENGTH)
+            if(pqueue_usb->size()>20)
             {
                 
                 printf("frame num is %u\n",frame_num);
@@ -562,7 +617,7 @@ void vTaskCopy()
                 xSemaphoreGive(xMutexUsb);
                 pqueue_usb->clear();
 
-                recv_state=RECV_NULL;
+                recv_state=RECV_START;
             }
             break;
         default:
@@ -579,7 +634,7 @@ void vTaskCopy()
         //     std::copy(queue_usb.begin(),queue_usb.begin()+9,write_buf);
         //     io_write(uart1,write_buf,10);
         // }
-        
+        xSemaphoreGive(xMutexCopy);
         vTaskDelay(1 / portTICK_RATE_MS);
     }
 }
